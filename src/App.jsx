@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 // ==== TUNABLES ====
-const PLAYER_BOTTOM_MARGIN = 0.18; // 20% tinggi layar dari bawah (semakin besar -> mobil lebih maju)
+const PLAYER_BOTTOM_MARGIN = 0.20; // 20% tinggi layar dari bawah (semakin besar -> mobil lebih “maju”)
 const HITBOX_SHRINK_X = 0.75;
-const HITBOX_SHRINK_Y = 0.50;
+const HITBOX_SHRINK_Y = 0.80;
 const CONE_SHRINK_X   = 0.85;
 const CONE_SHRINK_Y   = 0.90;
 
@@ -20,30 +20,31 @@ export default function App() {
   const obstaclesRef = useRef([]);
   const tickRef = useRef(0);
 
-  // spawn spacing
+  // spawn spacing (renggang, adaptif)
   const spawnCountdownRef = useRef(0);
-  const nextSpawn = () => {
-    const d = getDifficulty();
-    const base = 85 + Math.floor(Math.random() * 55);   // 85–140 tick
-    const factor = 1 + d * 0.5;                          // tiap level 50% lebih rapat
-    spawnCountdownRef.current = Math.max(30, Math.floor(base / factor));
-  };
 
   // UI / skor
   const [score, setScore] = useState(0);
   const scoreRef = useRef(0);
   const [gameOver, setGameOver] = useState(false);
 
-  // audio
-  const engineRef = useRef(null);
-  const crashRef  = useRef(null);
+  // audio (BGM only)
+  const bgmRef = useRef(null);
   const audioArmedRef = useRef(false);
 
   // lane & player
   const lanesRef = useRef([0,0,0]);
   const playerRef = useRef({ lane: 1, x: 0, y: 0, w: 0, h: 0 });
 
+  // difficulty naik tiap 1000 poin
   const getDifficulty = () => Math.floor(scoreRef.current / 1000);
+
+  const nextSpawn = () => {
+    const d = getDifficulty();                          // 0,1,2,...
+    const base = 85 + Math.floor(Math.random() * 55);   // 85–140 tick
+    const factor = 1 + d * 0.5;                         // tiap level 50% lebih rapat
+    spawnCountdownRef.current = Math.max(30, Math.floor(base / factor));
+  };
 
   // ===== helpers =====
   const fitToScreen = () => {
@@ -80,11 +81,16 @@ export default function App() {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(loop);
 
-    if (audioArmedRef.current) {
-      try { engineRef.current?.play().catch(()=>{}); } catch {}
+    // mulai BGM kalau sudah di-arm
+    if (audioArmedRef.current && bgmRef.current) {
+      try {
+        bgmRef.current.currentTime = 0;
+        bgmRef.current.play().catch(()=>{});
+      } catch {}
     }
   };
 
+  // ===== Jalan highway: simetris, bergerak KE BAWAH =====
   const drawRoad = (ctx, canvas) => {
     const tick = tickRef.current;
 
@@ -101,7 +107,8 @@ export default function App() {
 
     const midX = Math.round(canvas.width / 2 - width / 2);
 
-    let y = -dash + ((tick % unit)); // bergerak ke BAWAH
+    // bergerak ke bawah
+    let y = -dash + ((tick % unit));
     ctx.fillStyle = '#000000';
     for (; y < canvas.height + unit; y += unit) {
       ctx.fillRect(midX, Math.round(y), width, dash);
@@ -127,12 +134,13 @@ export default function App() {
     const c = canvasRef.current;
     const lane = Math.floor(Math.random() * 3);
 
+    // ukuran cone relatif lebar layar
     const w = Math.max(28, Math.round(c.width * 0.12));
     const h = Math.round(w * 1.15);
 
     const d = getDifficulty();
     const speedBase = 3 + Math.min(4, tickRef.current / 1200);
-    const speedBoost = d * 0.8;
+    const speedBoost = d * 0.8;                 // tiap level tambah cepat
     const speed = Math.min(9.5, speedBase + speedBoost);
 
     obstaclesRef.current.push({
@@ -154,6 +162,7 @@ export default function App() {
   const checkCollision = () => {
     const p = playerRef.current;
 
+    // hitbox mobil diperkecil
     const pw = p.w * HITBOX_SHRINK_X;
     const ph = p.h * HITBOX_SHRINK_Y;
     const px = p.x + (p.w - pw) / 2;
@@ -178,7 +187,7 @@ export default function App() {
     tickRef.current++;
     drawRoad(ctx, canvas);
 
-    // spawn
+    // spawn adaptif
     spawnCountdownRef.current--;
     if (spawnCountdownRef.current <= 0) {
       spawnCone();
@@ -204,8 +213,8 @@ export default function App() {
     if (checkCollision()) {
       runningRef.current = false;
       setGameOver(true);
-      try { engineRef.current?.pause(); } catch {}
-      try { crashRef.current.currentTime = 0; crashRef.current.play(); } catch {}
+      // stop BGM
+      try { bgmRef.current?.pause(); } catch {}
       return;
     }
 
@@ -220,20 +229,21 @@ export default function App() {
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
     imgRef.current.src = '/sprites/cow-car.png';
 
-    // audio lokal
-    engineRef.current = new Audio('/sounds/engine.mp3');
-    engineRef.current.loop = true;
-    engineRef.current.preload = 'auto';
-    engineRef.current.volume = 0.25;
+    // BGM lokal
+    bgmRef.current = new Audio('/sounds/mighty-switch.mp3');
+    bgmRef.current.loop = true;
+    bgmRef.current.preload = 'auto';
+    bgmRef.current.volume = 0.25;
 
-    crashRef.current = new Audio('/sounds/crash.mp3');
-    crashRef.current.preload = 'auto';
-
-    // arm audio setelah interaksi pertama
+    // arm audio setelah interaksi pertama (aturan mobile)
     const armAudio = () => {
       if (audioArmedRef.current) return;
       audioArmedRef.current = true;
-      engineRef.current.play().catch(()=>{});
+      // prime: siap diputar saat game mulai
+      bgmRef.current.play().then(() => {
+        bgmRef.current.pause();
+        bgmRef.current.currentTime = 0;
+      }).catch(()=>{});
     };
     const armers = ['touchstart','pointerdown','mousedown','keydown'];
     armers.forEach(ev => window.addEventListener(ev, armAudio, { passive: true }));
@@ -265,7 +275,6 @@ export default function App() {
       c.width = window.innerWidth;
       c.height = window.innerHeight;
       lanesRef.current = [c.width * 0.25, c.width * 0.5, c.width * 0.75];
-      // keep size proportional
       const baseW = Math.min(120, Math.max(72, Math.round(c.width * 0.18)));
       const baseH = Math.round(baseW * 1.5);
       playerRef.current.w = baseW;
@@ -285,7 +294,7 @@ export default function App() {
       armers.forEach(ev => window.removeEventListener(ev, armAudio));
       canvas.removeEventListener('touchstart', onStart);
       canvas.removeEventListener('touchend', onEnd);
-      try { engineRef.current?.pause(); } catch {}
+      try { bgmRef.current?.pause(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
