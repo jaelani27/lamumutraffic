@@ -12,7 +12,12 @@ export default function App() {
   const runningRef = useRef(true);
   const obstaclesRef = useRef([]);
   const tickRef = useRef(0);
-  const spawnRef = useRef(0);
+
+  // spawn spacing
+  const spawnCountdownRef = useRef(0);        // tick sampai spawn berikutnya
+  const nextSpawn = () => {                   // random biar jarak variatif (lebih jauh)
+    spawnCountdownRef.current = 85 + Math.floor(Math.random() * 55); // 85–140 tick
+  };
 
   // UI state
   const [score, setScore] = useState(0);
@@ -34,21 +39,18 @@ export default function App() {
     setScore(0);
 
     tickRef.current = 0;
-    spawnRef.current = 0;
     obstaclesRef.current = [];
+    nextSpawn();
 
-    // posisi awal pemain
-    if (canvas) {
-      const lanes = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8];
-      lanesRef.current = lanes;
-    }
-    playerRef.current = { lane: 1, x: lanesRef.current[1] - 40, y: (canvas?.height ?? 600) - 150, w: 80, h: 120 };
+    const lanes = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8];
+    lanesRef.current = lanes;
+    playerRef.current = { lane: 1, x: lanes[1] - 40, y: canvas.height - 150, w: 80, h: 120 };
 
-    // stop RAF dulu biar gak dobel
     cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(loop); // start ulang
-    // resume engine sound
-    try { engineRef.current?.play().catch(()=>{}); } catch {}
+    rafRef.current = requestAnimationFrame(loop);
+
+    // coba nyalakan mesin (kalau sudah di-arm oleh user gesture)
+    if (audioArmedRef.current) { try { engineRef.current?.play().catch(()=>{}); } catch {} }
   };
 
   // gambar jalan putih + garis tengah hitam
@@ -85,7 +87,7 @@ export default function App() {
     });
   };
 
-  const spawnCone = (canvas) => {
+  const spawnCone = () => {
     const lanes = lanesRef.current;
     const lane = Math.floor(Math.random() * 3);
     const baseW = 48, h = 56;
@@ -95,21 +97,15 @@ export default function App() {
       y: -h,
       w: baseW,
       h,
-      speed: 3 + Math.min(4, tickRef.current / 1200)
+      speed: 3 + Math.min(4, tickRef.current / 1200) // makin lama makin cepat
     });
   };
 
   const drawPlayer = (ctx) => {
     const p = playerRef.current;
-    // posisikan x sesuai lane
     p.x = lanesRef.current[p.lane] - p.w / 2;
-
-    if (imgLoadedRef.current) {
-      ctx.drawImage(imgRef.current, p.x, p.y, p.w, p.h);
-    } else {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-    }
+    if (imgLoadedRef.current) ctx.drawImage(imgRef.current, p.x, p.y, p.w, p.h);
+    else { ctx.fillStyle = '#000'; ctx.fillRect(p.x, p.y, p.w, p.h); }
   };
 
   const checkCollision = () => {
@@ -117,9 +113,7 @@ export default function App() {
     for (const o of obstaclesRef.current) {
       const left = o.cx - o.w/2, right = o.cx + o.w/2;
       const top = o.y, bottom = o.y + o.h;
-      if (p.x < right && p.x + p.w > left && p.y < bottom && p.y + p.h > top) {
-        return true;
-      }
+      if (p.x < right && p.x + p.w > left && p.y < bottom && p.y + p.h > top) return true;
     }
     return false;
   };
@@ -130,16 +124,18 @@ export default function App() {
     const ctx = canvas.getContext('2d');
 
     tickRef.current++;
-    spawnRef.current++;
 
     // background
     drawRoad(ctx, canvas);
 
-    // update obstacles
-    if (spawnRef.current > 50) {
-      spawnCone(canvas);
-      spawnRef.current = 0;
+    // spawn spacing (lebih jarang & acak)
+    spawnCountdownRef.current--;
+    if (spawnCountdownRef.current <= 0) {
+      spawnCone();
+      nextSpawn();
     }
+
+    // update obstacles
     obstaclesRef.current.forEach(o => o.y += o.speed);
     obstaclesRef.current = obstaclesRef.current.filter(o => o.y < canvas.height + 80);
 
@@ -155,7 +151,7 @@ export default function App() {
       setGameOver(true);
       try { engineRef.current?.pause(); } catch {}
       try { crashRef.current.currentTime = 0; crashRef.current.play(); } catch {}
-      return; // stop loop
+      return;
     }
 
     rafRef.current = requestAnimationFrame(loop);
@@ -167,11 +163,10 @@ export default function App() {
     canvas.width = 400;
     canvas.height = 600;
 
-    // lanes update
     lanesRef.current = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8];
     playerRef.current = { lane: 1, x: lanesRef.current[1] - 40, y: canvas.height - 150, w: 80, h: 120 };
 
-    // sprite (transparan)
+    // sprite (PNG transparan)
     imgRef.current = new Image();
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
     imgRef.current.src = '/sprites/cow-car.png';
@@ -179,17 +174,20 @@ export default function App() {
     // audio
     engineRef.current = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_6dc7479ec8.mp3?filename=car-engine-loop-10139.mp3');
     engineRef.current.loop = true;
+    engineRef.current.preload = 'auto';
     engineRef.current.volume = 0.25;
-    crashRef.current = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
 
-    // aktifkan audio setelah gesture pertama (mobile policy)
+    crashRef.current = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
+    crashRef.current.preload = 'auto';
+
+    // arm audio saat interaksi pertama (mobile policy)
     const armAudio = () => {
       if (audioArmedRef.current) return;
       audioArmedRef.current = true;
       engineRef.current.play().catch(()=>{});
     };
-    window.addEventListener('touchstart', armAudio, { passive: true });
-    window.addEventListener('keydown', armAudio);
+    const armers = ['touchstart','pointerdown','mousedown','keydown'];
+    armers.forEach(ev => window.addEventListener(ev, armAudio, { passive: true }));
 
     // controls: swipe
     let startX = 0;
@@ -210,13 +208,12 @@ export default function App() {
     window.addEventListener('keydown', onKey);
 
     // start
-    resetGame(canvas); // set semua & start loop
+    resetGame(canvas);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('touchstart', armAudio);
-      window.removeEventListener('keydown', armAudio);
       window.removeEventListener('keydown', onKey);
+      armers.forEach(ev => window.removeEventListener(ev, armAudio));
       canvas.removeEventListener('touchstart', onStart);
       canvas.removeEventListener('touchend', onEnd);
       try { engineRef.current?.pause(); } catch {}
