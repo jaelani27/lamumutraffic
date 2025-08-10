@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+// ==== TUNABLES ====
+const PLAYER_BOTTOM_MARGIN = 0.20; // 20% tinggi layar dari bawah (semakin besar -> mobil lebih maju)
+const HITBOX_SHRINK_X = 0.75;
+const HITBOX_SHRINK_Y = 0.80;
+const CONE_SHRINK_X   = 0.85;
+const CONE_SHRINK_Y   = 0.90;
+
 export default function App() {
   const canvasRef = useRef(null);
   const rafRef = useRef(0);
@@ -13,12 +20,12 @@ export default function App() {
   const obstaclesRef = useRef([]);
   const tickRef = useRef(0);
 
-  // spawn spacing (renggang & acak)
+  // spawn spacing
   const spawnCountdownRef = useRef(0);
   const nextSpawn = () => {
     const d = getDifficulty();
-    const base = 85 + Math.floor(Math.random() * 55);      // 85–140
-    const factor = 1 + d * 0.5;                             // tiap level 50% lebih rapat
+    const base = 85 + Math.floor(Math.random() * 55);   // 85–140 tick
+    const factor = 1 + d * 0.5;                          // tiap level 50% lebih rapat
     spawnCountdownRef.current = Math.max(30, Math.floor(base / factor));
   };
 
@@ -27,39 +34,32 @@ export default function App() {
   const scoreRef = useRef(0);
   const [gameOver, setGameOver] = useState(false);
 
-  // audio (lokal)
+  // audio
   const engineRef = useRef(null);
   const crashRef  = useRef(null);
   const audioArmedRef = useRef(false);
 
-  // lane & player (akan dihitung ulang sesuai canvas)
+  // lane & player
   const lanesRef = useRef([0,0,0]);
   const playerRef = useRef({ lane: 1, x: 0, y: 0, w: 0, h: 0 });
 
-  // hitbox shrink (biar tabrakan pas bentuk mobil)
-  const HITBOX_SHRINK_X = 0.75;
-  const HITBOX_SHRINK_Y = 0.80;
-  const CONE_SHRINK_X   = 0.85;
-  const CONE_SHRINK_Y   = 0.90;
+  const getDifficulty = () => Math.floor(scoreRef.current / 1000);
 
-  const getDifficulty = () => Math.floor(scoreRef.current / 1000); // naik tiap 1000
-
-  // ====== Layout helper (full-screen & responsif) ======
+  // ===== helpers =====
   const fitToScreen = () => {
     const c = canvasRef.current;
     c.width = window.innerWidth;
     c.height = window.innerHeight;
 
-    // posisi 3 lajur (25%, 50%, 75% lebar)
     lanesRef.current = [c.width * 0.25, c.width * 0.5, c.width * 0.75];
 
-    // ukuran player relatif layar (proporsional)
     const baseW = Math.min(120, Math.max(72, Math.round(c.width * 0.18)));
     const baseH = Math.round(baseW * 1.5);
+
     playerRef.current = {
       lane: 1,
       x: lanesRef.current[1] - baseW / 2,
-      y: c.height - baseH - Math.max(80, Math.round(c.height * 0.12)),
+      y: c.height - baseH - Math.max(80, Math.round(c.height * PLAYER_BOTTOM_MARGIN)),
       w: baseW,
       h: baseH
     };
@@ -80,17 +80,17 @@ export default function App() {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(loop);
 
-    if (audioArmedRef.current) { try { engineRef.current?.play().catch(()=>{}); } catch {} }
+    if (audioArmedRef.current) {
+      try { engineRef.current?.play().catch(()=>{}); } catch {}
+    }
   };
 
-  // ===== Jalan highway: simetris, bergerak KE BAWAH =====
   const drawRoad = (ctx, canvas) => {
     const tick = tickRef.current;
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // scale supaya proporsional di semua layar
     const scaleY = canvas.height / 600;
     const scaleX = canvas.width  / 400;
 
@@ -101,9 +101,7 @@ export default function App() {
 
     const midX = Math.round(canvas.width / 2 - width / 2);
 
-    // bergerak ke bawah
-    let y = -dash + ((tick % unit));
-
+    let y = -dash + ((tick % unit)); // bergerak ke BAWAH
     ctx.fillStyle = '#000000';
     for (; y < canvas.height + unit; y += unit) {
       ctx.fillRect(midX, Math.round(y), width, dash);
@@ -129,13 +127,12 @@ export default function App() {
     const c = canvasRef.current;
     const lane = Math.floor(Math.random() * 3);
 
-    // ukuran cone relatif lebar layar
     const w = Math.max(28, Math.round(c.width * 0.12));
     const h = Math.round(w * 1.15);
 
     const d = getDifficulty();
     const speedBase = 3 + Math.min(4, tickRef.current / 1200);
-    const speedBoost = d * 0.8; // tiap level tambah cepat
+    const speedBoost = d * 0.8;
     const speed = Math.min(9.5, speedBase + speedBoost);
 
     obstaclesRef.current.push({
@@ -181,7 +178,7 @@ export default function App() {
     tickRef.current++;
     drawRoad(ctx, canvas);
 
-    // spawn jarang & adaptif difficulty
+    // spawn
     spawnCountdownRef.current--;
     if (spawnCountdownRef.current <= 0) {
       spawnCone();
@@ -195,7 +192,7 @@ export default function App() {
     drawPlayer(ctx);
     drawCones(ctx);
 
-    // skor naik stabil
+    // skor
     if (tickRef.current % 3 === 0) {
       setScore(s => {
         const ns = s + 1;
@@ -218,12 +215,12 @@ export default function App() {
   useEffect(() => {
     const canvas = canvasRef.current;
 
-    // sprite
+    // sprite PNG transparan (crop)
     imgRef.current = new Image();
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
-    imgRef.current.src = '/sprites/cow-car.png'; // PNG transparan/crop kamu
+    imgRef.current.src = '/sprites/cow-car.png';
 
-    // AUDIO LOKAL
+    // audio lokal
     engineRef.current = new Audio('/sounds/engine.mp3');
     engineRef.current.loop = true;
     engineRef.current.preload = 'auto';
@@ -241,7 +238,7 @@ export default function App() {
     const armers = ['touchstart','pointerdown','mousedown','keydown'];
     armers.forEach(ev => window.addEventListener(ev, armAudio, { passive: true }));
 
-    // full-screen setup
+    // fullscreen init
     fitToScreen();
 
     // swipe
@@ -262,14 +259,25 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
 
-    // handle resize/rotate
-    const onResize = () => fitToScreen();
+    // resize/rotate
+    const onResize = () => {
+      const c = canvasRef.current;
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+      lanesRef.current = [c.width * 0.25, c.width * 0.5, c.width * 0.75];
+      // keep size proportional
+      const baseW = Math.min(120, Math.max(72, Math.round(c.width * 0.18)));
+      const baseH = Math.round(baseW * 1.5);
+      playerRef.current.w = baseW;
+      playerRef.current.h = baseH;
+      playerRef.current.y = c.height - baseH - Math.max(80, Math.round(c.height * PLAYER_BOTTOM_MARGIN));
+    };
     window.addEventListener('resize', onResize);
 
     // start
     resetGame(canvas);
 
-    // bersih-bersih
+    // cleanup
     return () => {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener('keydown', onKey);
@@ -284,11 +292,10 @@ export default function App() {
 
   return (
     <div style={{ textAlign: 'center' }}>
-      {/* Header & score rapih */}
-      <h1 style={{ margin: '8px 0 4px', fontSize: '24px' }}>Lamumu Traffic</h1>
+      <h1 style={{ margin: '8px 0 0', fontSize: 24 }}>Lamumu Traffic</h1>
       <div style={{ fontSize: 16, marginBottom: 4 }}>Score: {score}</div>
 
-      <div style={{ position:'relative', width: '100%', margin:'0 auto' }}>
+      <div style={{ position:'relative', width:'100%', margin:'0 auto' }}>
         <canvas
           ref={canvasRef}
           style={{
