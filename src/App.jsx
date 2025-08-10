@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useEffect, useRef, useState } from 'react';
 
 export default function App() {
@@ -58,22 +57,28 @@ export default function App() {
     if (audioArmedRef.current) { try { engineRef.current?.play().catch(()=>{}); } catch {} }
   };
 
-  // ---- ROAD: Highway (simetris pakai rect) ----
+  // ===== Highway center line (simetris, bergerak ke BAWAH) =====
   const drawRoad = (ctx, canvas) => {
     const tick = tickRef.current;
+
+    // Latar jalan putih
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const dash = 80;     // panjang garis
-    const gap  = 60;     // jarak antar garis
-    const width = 9;     // ketebalan garis
-    const unit = dash + gap;
+    // Pola markah highway
+    const dash  = 80;   // panjang garis
+    const gap   = 60;   // jarak antar garis
+    const width = 9;    // tebal garis
+    const unit  = dash + gap;
 
     const midX = Math.round(canvas.width / 2 - width / 2);
-    let y = -((tick % unit)); // animasi scroll
+
+    // supaya bergerak KE BAWAH, offset-nya positif
+    // mulai 1 dash di atas canvas agar potongan dalam viewport selalu utuh
+    let y = -dash + ((tick % unit));
 
     ctx.fillStyle = '#000000';
-    for (; y < canvas.height + dash; y += unit) {
+    for (; y < canvas.height + unit; y += unit) {
       ctx.fillRect(midX, Math.round(y), width, dash);
     }
   };
@@ -182,15 +187,15 @@ export default function App() {
     imgRef.current.src = '/sprites/cow-car.png'; // PNG transparan/crop kamu
 
     // ====== AUDIO LOKAL ======
-    engineRef.current = new Audio('/sounds/engine.mp3'); // <- taruh file ke public/sounds/engine.mp3
+    engineRef.current = new Audio('/sounds/engine.mp3'); // taruh file di public/sounds/engine.mp3
     engineRef.current.loop = true;
     engineRef.current.preload = 'auto';
     engineRef.current.volume = 0.25;
 
-    crashRef.current = new Audio('/sounds/crash.mp3');   // <- taruh file ke public/sounds/crash.mp3
+    crashRef.current = new Audio('/sounds/crash.mp3');   // taruh file di public/sounds/crash.mp3
     crashRef.current.preload = 'auto';
 
-    // arm audio sesudah interaksi pertama (kebijakan mobile)
+    // arm audio sesudah interaksi pertama (aturan mobile)
     const armAudio = () => {
       if (audioArmedRef.current) return;
       audioArmedRef.current = true;
@@ -233,14 +238,15 @@ export default function App() {
 
   return (
     <div style={{ textAlign: 'center' }}>
-      <h1>Lamumu Traffic</h1>
-      <div style={{ fontSize: 18, marginBottom: 8 }}>Score: {score}</div>
+      {/* Header & score lebih rapih */}
+      <h1 style={{ margin: '8px 0 4px', fontSize: '28px' }}>Lamumu Traffic</h1>
+      <div style={{ fontSize: 18, marginBottom: 6 }}>Score: {score}</div>
 
       <div style={{ position:'relative', width: 400, margin:'0 auto' }}>
         <canvas
           ref={canvasRef}
           style={{
-            display:'block', margin:'12px auto 24px',
+            display:'block', margin:'4px auto 18px',
             border:'2px solid #000', background:'#fff', touchAction:'none'
           }}
         />
