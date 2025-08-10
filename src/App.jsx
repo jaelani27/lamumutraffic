@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useEffect, useRef, useState } from 'react';
 
 export default function App() {
@@ -23,7 +24,7 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
 
-  // audio
+  // audio (lokal)
   const engineRef = useRef(null);
   const crashRef  = useRef(null);
   const audioArmedRef = useRef(false);
@@ -57,24 +58,24 @@ export default function App() {
     if (audioArmedRef.current) { try { engineRef.current?.play().catch(()=>{}); } catch {} }
   };
 
-  // ---- ROAD: Highway dash/gap ----
+  // ---- ROAD: Highway (simetris pakai rect) ----
   const drawRoad = (ctx, canvas) => {
     const tick = tickRef.current;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const dash = 80;  // panjang garis
-    const gap  = 60;  // jarak antar garis
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 9;
-    ctx.setLineDash([dash, gap]);
-    ctx.lineDashOffset = -((tick * 1) % (dash + gap)); // scroll anim
-    const midX = canvas.width / 2;
-    ctx.beginPath();
-    ctx.moveTo(midX, -100);
-    ctx.lineTo(midX, canvas.height + 100);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    const dash = 80;     // panjang garis
+    const gap  = 60;     // jarak antar garis
+    const width = 9;     // ketebalan garis
+    const unit = dash + gap;
+
+    const midX = Math.round(canvas.width / 2 - width / 2);
+    let y = -((tick % unit)); // animasi scroll
+
+    ctx.fillStyle = '#000000';
+    for (; y < canvas.height + dash; y += unit) {
+      ctx.fillRect(midX, Math.round(y), width, dash);
+    }
   };
 
   const drawCones = (ctx) => {
@@ -178,18 +179,18 @@ export default function App() {
     // sprite
     imgRef.current = new Image();
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
-    imgRef.current.src = '/sprites/cow-car.png'; // PNG transparan/crop
+    imgRef.current.src = '/sprites/cow-car.png'; // PNG transparan/crop kamu
 
-    // audio
-    engineRef.current = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_6dc7479ec8.mp3?filename=car-engine-loop-10139.mp3');
+    // ====== AUDIO LOKAL ======
+    engineRef.current = new Audio('/sounds/engine.mp3'); // <- taruh file ke public/sounds/engine.mp3
     engineRef.current.loop = true;
     engineRef.current.preload = 'auto';
     engineRef.current.volume = 0.25;
 
-    crashRef.current = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
+    crashRef.current = new Audio('/sounds/crash.mp3');   // <- taruh file ke public/sounds/crash.mp3
     crashRef.current.preload = 'auto';
 
-    // arm audio sesudah interaksi pertama
+    // arm audio sesudah interaksi pertama (kebijakan mobile)
     const armAudio = () => {
       if (audioArmedRef.current) return;
       audioArmedRef.current = true;
