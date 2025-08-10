@@ -13,7 +13,7 @@ export default function App() {
   const obstaclesRef = useRef([]);
   const tickRef = useRef(0);
 
-  // spawn spacing (lebih renggang & acak)
+  // spawn spacing (renggang & acak)
   const spawnCountdownRef = useRef(0);
   const nextSpawn = () => {                      // 85–140 tick antar cone
     spawnCountdownRef.current = 85 + Math.floor(Math.random() * 55);
@@ -32,13 +32,11 @@ export default function App() {
   const lanesRef = useRef([80, 200, 320]); // titik tengah 3 lajur
   const playerRef = useRef({ lane: 1, x: 160, y: 450, w: 80, h: 120 });
 
-  // ===== Hitbox diperkecil biar tabrakan pas ke bodi =====
-  const HITBOX_SHRINK_X = 0.75; // 75% lebar sprite
-  const HITBOX_SHRINK_Y = 0.80; // 80% tinggi sprite
-  // Optional: kecilkan hitbox cone sedikit juga
+  // Hitbox dikecilkan (biar nabraknya pas)
+  const HITBOX_SHRINK_X = 0.75;
+  const HITBOX_SHRINK_Y = 0.80;
   const CONE_SHRINK_X   = 0.85;
   const CONE_SHRINK_Y   = 0.90;
-  // =======================================================
 
   const resetGame = (canvas) => {
     runningRef.current = true;
@@ -59,20 +57,22 @@ export default function App() {
     if (audioArmedRef.current) { try { engineRef.current?.play().catch(()=>{}); } catch {} }
   };
 
+  // ---- ROAD: Highway dash/gap ----
   const drawRoad = (ctx, canvas) => {
     const tick = tickRef.current;
-    ctx.fillStyle = '#ffffff'; // jalan putih
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // garis tengah hitam putus-putus
+    const dash = 80;  // panjang garis
+    const gap  = 60;  // jarak antar garis
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 6;
-    ctx.setLineDash([18, 18]);
-    ctx.lineDashOffset = -(tick % 36);
+    ctx.lineWidth = 9;
+    ctx.setLineDash([dash, gap]);
+    ctx.lineDashOffset = -((tick * 1) % (dash + gap)); // scroll anim
     const midX = canvas.width / 2;
     ctx.beginPath();
-    ctx.moveTo(midX, -40);
-    ctx.lineTo(midX, canvas.height + 40);
+    ctx.moveTo(midX, -100);
+    ctx.lineTo(midX, canvas.height + 100);
     ctx.stroke();
     ctx.setLineDash([]);
   };
@@ -87,7 +87,6 @@ export default function App() {
       ctx.lineTo(o.cx + half, o.y + o.h);
       ctx.closePath();
       ctx.fill();
-      // strip putih
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(o.cx - o.w * 0.2, o.y + o.h * 0.55, o.w * 0.4, 6);
     });
@@ -103,7 +102,7 @@ export default function App() {
       y: -h,
       w: baseW,
       h,
-      speed: 3 + Math.min(4, tickRef.current / 1200) // makin lama makin cepat
+      speed: 3 + Math.min(4, tickRef.current / 1200)
     });
   };
 
@@ -114,7 +113,6 @@ export default function App() {
     else { ctx.fillStyle = '#000'; ctx.fillRect(p.x, p.y, p.w, p.h); }
   };
 
-  // collision pakai hitbox yang dikecilkan
   const checkCollision = () => {
     const p = playerRef.current;
 
@@ -180,7 +178,7 @@ export default function App() {
     // sprite
     imgRef.current = new Image();
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
-    imgRef.current.src = '/sprites/cow-car.png'; // pastikan file transparan/crop
+    imgRef.current.src = '/sprites/cow-car.png'; // PNG transparan/crop
 
     // audio
     engineRef.current = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_6dc7479ec8.mp3?filename=car-engine-loop-10139.mp3');
@@ -191,7 +189,7 @@ export default function App() {
     crashRef.current = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
     crashRef.current.preload = 'auto';
 
-    // arm audio sesudah interaksi pertama (mobile policy)
+    // arm audio sesudah interaksi pertama
     const armAudio = () => {
       if (audioArmedRef.current) return;
       audioArmedRef.current = true;
