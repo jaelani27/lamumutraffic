@@ -4,198 +4,262 @@ export default function App() {
   const canvasRef = useRef(null);
   const rafRef = useRef(0);
 
+  // sprite
   const imgRef = useRef(null);
   const imgLoadedRef = useRef(false);
 
+  // loop & data
   const runningRef = useRef(true);
+  const obstaclesRef = useRef([]);
+  const tickRef = useRef(0);
+  const spawnRef = useRef(0);
+
+  // UI state
   const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+
+  // audio
+  const engineRef = useRef(null);
+  const crashRef = useRef(null);
+  const audioArmedRef = useRef(false);
+
+  // lanes
+  const lanesRef = useRef([80, 200, 320]); // titik tengah 3 lajur
+  const playerRef = useRef({ lane: 1, x: 160, y: 450, w: 80, h: 120 });
+
+  // ---------- helpers ----------
+  const resetGame = (canvas) => {
+    runningRef.current = true;
+    setGameOver(false);
+    setScore(0);
+
+    tickRef.current = 0;
+    spawnRef.current = 0;
+    obstaclesRef.current = [];
+
+    // posisi awal pemain
+    if (canvas) {
+      const lanes = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8];
+      lanesRef.current = lanes;
+    }
+    playerRef.current = { lane: 1, x: lanesRef.current[1] - 40, y: (canvas?.height ?? 600) - 150, w: 80, h: 120 };
+
+    // stop RAF dulu biar gak dobel
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(loop); // start ulang
+    // resume engine sound
+    try { engineRef.current?.play().catch(()=>{}); } catch {}
+  };
+
+  // gambar jalan putih + garis tengah hitam
+  const drawRoad = (ctx, canvas) => {
+    const tick = tickRef.current;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.setLineDash([18, 18]);
+    ctx.lineDashOffset = -(tick % 36);
+    const midX = canvas.width / 2;
+    ctx.beginPath();
+    ctx.moveTo(midX, -40);
+    ctx.lineTo(midX, canvas.height + 40);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+
+  // gambar cone oranye (segitiga)
+  const drawCones = (ctx) => {
+    obstaclesRef.current.forEach(o => {
+      const half = o.w / 2;
+      ctx.fillStyle = '#FF7A00';
+      ctx.beginPath();
+      ctx.moveTo(o.cx, o.y);
+      ctx.lineTo(o.cx - half, o.y + o.h);
+      ctx.lineTo(o.cx + half, o.y + o.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(o.cx - o.w * 0.2, o.y + o.h * 0.55, o.w * 0.4, 6);
+    });
+  };
+
+  const spawnCone = (canvas) => {
+    const lanes = lanesRef.current;
+    const lane = Math.floor(Math.random() * 3);
+    const baseW = 48, h = 56;
+    obstaclesRef.current.push({
+      kind: 'cone',
+      cx: lanes[lane],
+      y: -h,
+      w: baseW,
+      h,
+      speed: 3 + Math.min(4, tickRef.current / 1200)
+    });
+  };
+
+  const drawPlayer = (ctx) => {
+    const p = playerRef.current;
+    // posisikan x sesuai lane
+    p.x = lanesRef.current[p.lane] - p.w / 2;
+
+    if (imgLoadedRef.current) {
+      ctx.drawImage(imgRef.current, p.x, p.y, p.w, p.h);
+    } else {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
+  };
+
+  const checkCollision = () => {
+    const p = playerRef.current;
+    for (const o of obstaclesRef.current) {
+      const left = o.cx - o.w/2, right = o.cx + o.w/2;
+      const top = o.y, bottom = o.y + o.h;
+      if (p.x < right && p.x + p.w > left && p.y < bottom && p.y + p.h > top) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const loop = () => {
+    if (!runningRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    tickRef.current++;
+    spawnRef.current++;
+
+    // background
+    drawRoad(ctx, canvas);
+
+    // update obstacles
+    if (spawnRef.current > 50) {
+      spawnCone(canvas);
+      spawnRef.current = 0;
+    }
+    obstaclesRef.current.forEach(o => o.y += o.speed);
+    obstaclesRef.current = obstaclesRef.current.filter(o => o.y < canvas.height + 80);
+
+    // draw
+    drawPlayer(ctx);
+    drawCones(ctx);
+
+    // score & collision
+    if (tickRef.current % 3 === 0) setScore(s => s + 1);
+
+    if (checkCollision()) {
+      runningRef.current = false;
+      setGameOver(true);
+      try { engineRef.current?.pause(); } catch {}
+      try { crashRef.current.currentTime = 0; crashRef.current.play(); } catch {}
+      return; // stop loop
+    }
+
+    rafRef.current = requestAnimationFrame(loop);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { alpha: false });
-
-    // ukuran potret
     canvas.width = 400;
     canvas.height = 600;
 
-    // --- load sprite pemain (sekali saja) ---
+    // lanes update
+    lanesRef.current = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8];
+    playerRef.current = { lane: 1, x: lanesRef.current[1] - 40, y: canvas.height - 150, w: 80, h: 120 };
+
+    // sprite (transparan)
     imgRef.current = new Image();
     imgRef.current.onload = () => { imgLoadedRef.current = true; };
-    imgRef.current.src = '/sprites/cow-car.png'; // pastikan file ada di public/sprites/
+    imgRef.current.src = '/sprites/cow-car.png';
 
-    // --- lane & player ---
-    const lanes = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8]; // titik tengah lane
-    const player = { lane: 1, x: lanes[1] - 40, y: canvas.height - 150, w: 80, h: 120 };
+    // audio
+    engineRef.current = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_6dc7479ec8.mp3?filename=car-engine-loop-10139.mp3');
+    engineRef.current.loop = true;
+    engineRef.current.volume = 0.25;
+    crashRef.current = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
 
-    // --- obstacles (cones) ---
-    let obstacles = [];
-    let tick = 0;
-    let spawnTimer = 0;
+    // aktifkan audio setelah gesture pertama (mobile policy)
+    const armAudio = () => {
+      if (audioArmedRef.current) return;
+      audioArmedRef.current = true;
+      engineRef.current.play().catch(()=>{});
+    };
+    window.addEventListener('touchstart', armAudio, { passive: true });
+    window.addEventListener('keydown', armAudio);
 
-    // --- audio (aman kalau gagal) ---
-    const engine = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_6dc7479ec8.mp3?filename=car-engine-loop-10139.mp3');
-    engine.loop = true; engine.volume = 0.25;
-    const crash = new Audio('https://cdn.pixabay.com/download/audio/2021/09/15/audio_eb1a0ceefb.mp3?filename=crash-102.wav');
-    const resumeAudio = () => { engine.play().catch(()=>{}); window.removeEventListener('touchstart', resumeAudio); };
-    window.addEventListener('touchstart', resumeAudio, { passive: true });
-
-    // --- controls: swipe ---
+    // controls: swipe
     let startX = 0;
     const onStart = (e) => { startX = e.changedTouches[0].clientX; };
     const onEnd = (e) => {
       const dx = e.changedTouches[0].clientX - startX;
-      if (dx < -30) player.lane = Math.max(0, player.lane - 1);
-      if (dx >  30) player.lane = Math.min(2, player.lane + 1);
+      if (dx < -30) playerRef.current.lane = Math.max(0, playerRef.current.lane - 1);
+      if (dx >  30) playerRef.current.lane = Math.min(2, playerRef.current.lane + 1);
     };
     canvas.addEventListener('touchstart', onStart, { passive: true });
     canvas.addEventListener('touchend', onEnd,   { passive: true });
 
-    // keyboard opsional
+    // keyboard (opsional)
     const onKey = (e) => {
-      if (e.key === 'ArrowLeft')  player.lane = Math.max(0, player.lane - 1);
-      if (e.key === 'ArrowRight') player.lane = Math.min(2, player.lane + 1);
-      if (!runningRef.current && e.key === 'Enter') window.location.reload();
+      if (e.key === 'ArrowLeft')  playerRef.current.lane = Math.max(0, playerRef.current.lane - 1);
+      if (e.key === 'ArrowRight') playerRef.current.lane = Math.min(2, playerRef.current.lane + 1);
     };
     window.addEventListener('keydown', onKey);
 
-    // --- helper gambar jalan ---
-    function drawRoad() {
-      // latar jalan putih
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // garis tengah hitam putus-putus
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 6;
-      ctx.setLineDash([18, 18]);
-      ctx.lineDashOffset = -(tick % 36); // animasi bergerak
-      const midX = canvas.width / 2;
-      ctx.beginPath();
-      ctx.moveTo(midX, -40);
-      ctx.lineTo(midX, canvas.height + 40);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // --- gambar player ---
-    function drawPlayer() {
-      // posisikan x ke tengah lane
-      const centerX = lanes[player.lane];
-      player.x = centerX - player.w / 2;
-
-      if (imgLoadedRef.current) {
-        ctx.drawImage(imgRef.current, player.x, player.y, player.w, player.h);
-      } else {
-        // fallback sementara
-        ctx.fillStyle = '#000';
-        ctx.fillRect(player.x, player.y, player.w, player.h);
-      }
-    }
-
-    // --- spawn obstacle (cone oranye) ---
-    function spawnCone() {
-      const lane = Math.floor(Math.random() * 3);
-      const baseW = 48, h = 56;
-      obstacles.push({
-        kind: 'cone',
-        cx: lanes[lane],           // pusat di lane
-        y: -h,
-        w: baseW,
-        h,
-        speed: 3 + Math.min(4, tick / 1200) // makin lama makin cepat
-      });
-    }
-
-    // --- gambar obstacles (cone segitiga oranye) ---
-    function drawObstacles() {
-      obstacles.forEach(o => {
-        if (o.kind === 'cone') {
-          const half = o.w / 2;
-          // segitiga
-          ctx.fillStyle = '#FF7A00';
-          ctx.beginPath();
-          ctx.moveTo(o.cx, o.y);                 // puncak
-          ctx.lineTo(o.cx - half, o.y + o.h);    // kiri bawah
-          ctx.lineTo(o.cx + half, o.y + o.h);    // kanan bawah
-          ctx.closePath();
-          ctx.fill();
-          // strip putih kecil
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(o.cx - o.w*0.2, o.y + o.h*0.55, o.w*0.4, 6);
-        }
-      });
-    }
-
-    // --- collision approx (pakai bounding box cone) ---
-    function checkCollision() {
-      for (const o of obstacles) {
-        const coneLeft = o.cx - o.w/2, coneRight = o.cx + o.w/2;
-        const coneTop = o.y, coneBottom = o.y + o.h;
-        const px1 = player.x, px2 = player.x + player.w;
-        const py1 = player.y, py2 = player.y + player.h;
-        if (px1 < coneRight && px2 > coneLeft && py1 < coneBottom && py2 > coneTop) {
-          runningRef.current = false;
-          try { engine.pause(); } catch(e){}
-          try { crash.currentTime = 0; crash.play(); } catch(e){}
-          return true;
-        }
-      }
-      return false;
-    }
-
-    // --- loop ---
-    const loop = () => {
-      if (!runningRef.current) return;
-
-      tick++; spawnTimer++;
-      drawRoad();
-
-      // update obstacles
-      if (spawnTimer > 50) { spawnCone(); spawnTimer = 0; }
-      obstacles.forEach(o => o.y += o.speed);
-      obstacles = obstacles.filter(o => o.y < canvas.height + 80);
-
-      // gambar
-      drawPlayer();
-      drawObstacles();
-
-      // skor & tabrakan
-      if (!checkCollision() && tick % 3 === 0) setScore(s => s + 1);
-
-      rafRef.current = requestAnimationFrame(loop);
-    };
-
-    engine.play().catch(()=>{});
-    rafRef.current = requestAnimationFrame(loop);
+    // start
+    resetGame(canvas); // set semua & start loop
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('touchstart', armAudio);
+      window.removeEventListener('keydown', armAudio);
       window.removeEventListener('keydown', onKey);
       canvas.removeEventListener('touchstart', onStart);
       canvas.removeEventListener('touchend', onEnd);
-      try { engine.pause(); } catch(e){}
+      try { engineRef.current?.pause(); } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const restart = () => window.location.reload();
-
   return (
-    <div>
+    <div style={{ textAlign: 'center' }}>
       <h1>Lamumu Traffic</h1>
-      <div>Score: {score}</div>
-      <canvas
-        ref={canvasRef}
-        style={{
-          display:'block', margin:'12px auto 24px',
-          border:'2px solid #000', background:'#fff', touchAction:'none'
-        }}
-      />
-      {!runningRef.current && (
-        <div>
-          <h2 style={{color:'#ff5252'}}>Game Over</h2>
-          <button className="btn" onClick={restart}>Restart</button>
-        </div>
-      )}
+      <div style={{ fontSize: 18, marginBottom: 8 }}>Score: {score}</div>
+
+      <div style={{ position:'relative', width: 400, margin:'0 auto' }}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            display:'block', margin:'12px auto 24px',
+            border:'2px solid #000', background:'#fff', touchAction:'none'
+          }}
+        />
+        {gameOver && (
+          <div
+            style={{
+              position:'absolute', inset:0, display:'flex',
+              flexDirection:'column', alignItems:'center', justifyContent:'center',
+              background:'rgba(0,0,0,0.55)'
+            }}
+          >
+            <div style={{ fontSize:28, fontWeight:700, color:'#fff', marginBottom:12 }}>
+              Game Over
+            </div>
+            <button
+              onClick={() => resetGame(canvasRef.current)}
+              style={{
+                padding:'10px 16px', borderRadius:10, border:'1px solid #fff',
+                background:'#111', color:'#fff', fontSize:16
+              }}
+            >
+              Restart
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
