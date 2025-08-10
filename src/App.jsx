@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // ==== TUNABLES ====
 const PLAYER_BOTTOM_MARGIN = 0.18; // 20% tinggi layar dari bawah (semakin besar -> mobil lebih maju)
 const HITBOX_SHRINK_X = 0.75;
-const HITBOX_SHRINK_Y = 0.80;
+const HITBOX_SHRINK_Y = 0.70;
 const CONE_SHRINK_X   = 0.85;
 const CONE_SHRINK_Y   = 0.90;
 
